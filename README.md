@@ -67,12 +67,12 @@ Output goes to `output/` — 4 PNG charts. SQL queries in `sql/analysis_queries.
 
 ---
 
-## Tech Used
+## Tech
 
-`Python` · `pandas` · `NumPy` · `scikit-learn` · `matplotlib` · `seaborn` · `scipy` · `SQL` · `SQLite`
+Python, pandas, NumPy, scikit-learn, matplotlib, seaborn, scipy, SQL, SQLite
 
 ---
 
 ## Context
 
-Part of my job search portfolio targeting data analyst and product analytics roles — particularly interested in fintech companies operating in London and the Netherlands. This project complements my healthcare analytics work (see [github.com/jeylanimohamed/healthcare-claims-analytics](https://github.com/jeylanimohamed/healthcare-claims-analytics)) to show I can work across domains.
+I built this for my job search — data analyst and product analytics roles, mostly at fintechs in London and the Netherlands. I've also got a healthcare analytics project (see my other repo) from my UnitedHealth Group / Optum experience. Between the two, I wanted to show I can work in different industries without needing a ton of ramp-up time.
