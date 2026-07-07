@@ -17,6 +17,7 @@ Structure:
 """
 
 import sqlite3
+import os
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -26,7 +27,7 @@ import seaborn as sns
 from scipy import stats
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, roc_auc_score
+from sklearn.metrics import roc_auc_score
 
 sns.set_style('whitegrid')
 sns.set_palette('mako')
@@ -34,6 +35,8 @@ sns.set_palette('mako')
 # ══════════════════════════════════════════
 # 1. LOAD DATA
 # ══════════════════════════════════════════
+
+os.makedirs('output', exist_ok=True)
 
 users = pd.read_csv('data/users.csv')
 txns = pd.read_csv('data/transactions.csv')
@@ -263,8 +266,6 @@ print("  ✓ output/churn_drivers.png")
 
 # Fig 2: Feature importance
 fig, ax = plt.subplots(figsize=(9, 5))
-colors = ['#e74c3c' if x < 0.05 else sns.color_palette('mako', len(imp))[i] 
-          for i, x in enumerate(imp['importance'])]
 bars = ax.barh(imp['feature'], imp['importance'], color=sns.color_palette('mako', len(imp)))
 ax.set_title('What Predicts Churn? (Random Forest Feature Importance)', fontweight='bold')
 ax.set_xlabel('Importance Score')
@@ -283,15 +284,15 @@ ab_colors = ['#95a5a6', '#2ecc71']
 axes[0].bar(['Control', 'Treatment'], [ctrl_txn.mean(), trt_txn.mean()], color=ab_colors)
 axes[0].set_title('Avg Transactions (30 days)', fontweight='bold')
 axes[0].set_ylabel('Transaction Count')
-for i, (mean, std) in enumerate([(ctrl_txn.mean(), ctrl_txn.std()), (trt_txn.mean(), trt_txn.std())]):
-    axes[0].errorbar(i, mean, yerr=std/np.sqrt(len(ctrl_txn)), capsize=8, color='black', linewidth=1.5)
+for i, (mean, std, n) in enumerate([(ctrl_txn.mean(), ctrl_txn.std(), len(ctrl_txn)), (trt_txn.mean(), trt_txn.std(), len(treatment))]):
+    axes[0].errorbar(i, mean, yerr=std/np.sqrt(n), capsize=8, color='black', linewidth=1.5)
     axes[0].text(i, mean + 0.3, f'{mean:.1f}', ha='center', fontweight='bold', fontsize=11)
 
 axes[1].bar(['Control', 'Treatment'], [ctrl_spend.mean(), trt_spend.mean()], color=ab_colors)
 axes[1].set_title('Avg Spend (30 days)', fontweight='bold')
 axes[1].set_ylabel('Spend ($)')
-for i, (mean, std) in enumerate([(ctrl_spend.mean(), ctrl_spend.std()), (trt_spend.mean(), trt_spend.std())]):
-    axes[1].errorbar(i, mean, yerr=std/np.sqrt(len(ctrl_spend)), capsize=8, color='black', linewidth=1.5)
+for i, (mean, std, n) in enumerate([(ctrl_spend.mean(), ctrl_spend.std(), len(control)), (trt_spend.mean(), trt_spend.std(), len(treatment))]):
+    axes[1].errorbar(i, mean, yerr=std/np.sqrt(n), capsize=8, color='black', linewidth=1.5)
     axes[1].text(i, mean + 5, f'${mean:.0f}', ha='center', fontweight='bold', fontsize=11)
 
 fig.suptitle(f'A/B Test Results: New Onboarding Flow (p={p_value:.4f})', fontsize=13, fontweight='bold')

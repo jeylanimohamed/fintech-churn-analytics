@@ -23,7 +23,7 @@ Still want to add:
 - [ ] A survival analysis for time-to-churn
 - [ ] Maybe a Streamlit dashboard if I have time before applications open
 
-## July 8
+## July 7
 Tidied up the code and wrote the README. Tried to keep things readable — I hate portfolio projects where the code is unreadable mess. Added comments where the logic isn't obvious.
 
 Overall, happy with this. It's not production code but it shows I can:
