@@ -1,34 +1,28 @@
-# Fintech Product Analytics: Churn-Label Classification & Simulated A/B Test
+# Fintech Product Analytics: Churn Classification & a Simulated A/B Test
 
 **Mohamed Jeylani**
 
-This is an independent product-analytics portfolio project built on **fully synthetic digital-banking data**. It demonstrates an end-to-end workflow — synthetic data generation, SQL analysis, classification of an inactivity-based churn label, and a simulated A/B test of 30-day transaction activity. The generator intentionally encodes several behavioural relationships and a treatment effect, so the resulting metrics **demonstrate analytical methods rather than real customer behaviour or causal product impact**. No proprietary employer data, and no real customer records, were used.
+This is a personal product-analytics project I built to practise the kind of work a fintech analyst does day to day: writing SQL against a warehouse, building a churn model, and reading out an A/B test. All of the data is synthetic and generated locally — there's no employer data, no real customers, nothing proprietary. I wrote the data generator myself, and I deliberately baked a few behavioural patterns and a treatment effect into it, so the numbers below are really me recovering things I put into the data on purpose. Treat them as a demonstration of the methods, not as findings about how real customers behave.
 
-> My professional analytics experience motivated me to expand my portfolio into product analytics. This project is a separate, self-directed exercise and is not connected to any employer or their data.
+> My day job got me interested in analytics, so I started this on the side to build out a product-analytics portfolio. It's entirely separate from any employer and uses none of their data.
 
----
+## The question I was answering
 
-## Business question (illustrative)
+If I were a product analyst, I'd want to know two things: which behaviours tend to go with an inactivity-based churn label, and whether a simulated onboarding change moves 30-day transaction activity. Both answers only hold inside the dataset I generated — the point is to run the analysis end to end, not to draw a real conclusion.
 
-Framed as a product analyst might: which behavioural signals are associated with an inactivity-based churn label, and does a simulated onboarding variant change 30-day transaction activity? Both questions are answered **only within a generated dataset**, to exercise the methods.
+## The data (synthetic)
 
----
+Everything comes out of `data/generate_data.py`. It builds a made-up digital-banking scenario with assumed distributions for plans, feature adoption, transaction activity and inactivity. None of it is calibrated against a real bank's numbers.
 
-## Dataset (synthetic)
-
-All data are generated locally by `data/generate_data.py`. The generator creates an illustrative digital-banking scenario using **assumed** distributions for plans, product-feature adoption, transaction activity and account inactivity. These assumptions are **not** calibrated to or validated against proprietary data from any real financial institution (including any named fintech).
-
-| Table | Rows | Notes |
+| Table | Rows | What's in it |
 |---|---|---|
 | `users` | 8,000 | plan, country, signup date, adopted features, inactivity, churn label |
 | `transactions` | 60,000 | category and amount per transaction |
-| `ab_test` | 2,000 | users sampled into a simulated experiment (control/treatment) |
+| `ab_test` | 2,000 | users pulled into the simulated experiment (control/treatment) |
 
-Verify counts by running the project (see below).
+You can check the counts yourself by running the project (below).
 
-**Churn label definition.** A user is labelled churned if they have been inactive for **more than 90 days** relative to a fixed cutoff (2026-01-01). Several model features are derived from the same transaction history that defines this label, so they share information with it (see Limitations).
-
----
+A user counts as churned if they've gone more than 90 days without a transaction, measured against a fixed cutoff of 2026-01-01. Worth flagging up front: several of the model features come from the same transaction history that defines the label, so they share information with it. More on that in the limitations.
 
 ## Repository structure
 
@@ -37,58 +31,53 @@ fintech-churn-analytics/
 ├── README.md
 ├── NOTES.md                  # short methodology / decision log
 ├── requirements.txt
-├── analysis.py               # SQL analysis, churn-label classifier, simulated A/B test, charts
+├── analysis.py               # SQL analysis, churn classifier, simulated A/B test, charts
 ├── data/
-│   └── generate_data.py      # synthetic data generator (git-ignored CSV output)
+│   └── generate_data.py      # synthetic data generator (CSV output is git-ignored)
 └── sql/
     ├── analysis_queries.sql  # business-style SQL queries
-    └── load_to_sqlite.py     # builds data/fintech.db so the SQL runs standalone
+    └── load_to_sqlite.py     # builds data/fintech.db so the SQL runs on its own
 ```
 
----
+## How I approached it
 
-## Methodology
+1. **Generate** the users, transactions and the A/B sample, with a fixed seed so it's reproducible.
+2. **SQL analysis** in SQLite: churn by plan and country, feature-adoption buckets, active-vs-churned behaviour, cohort retention.
+3. **Churn classification**: a Random Forest on the inactivity-based label, split with `train_test_split` (`test_size=0.25`, `random_state=42`, no stratification). This is classifying a label defined at one point in time — not forecasting who'll churn next quarter.
+4. **Simulated A/B test**: the generator gives the treatment group a higher expected 30-day transaction count. I report the group means, the relative difference, a Welch t-test, a 95% confidence interval on the difference, Cohen's d, and a sample-ratio-mismatch check.
 
-1. **Generate** synthetic users, transactions and a simulated A/B sample (fixed seed for reproducibility).
-2. **SQL analysis** via SQLite: churn label by plan/country, feature-adoption buckets, active-vs-churned behaviour, cohort retention.
-3. **Churn-label classification**: a Random Forest classifies the inactivity-based label. Split: `train_test_split`, `test_size=0.25`, `random_state=42` (no stratification). This is classification of a label defined at one observation point — **not** a prospective forecast.
-4. **Simulated A/B test**: the generator injects a higher expected 30-day transaction count into the treatment group. Analysis reports means, relative difference, a Welch t-test, a 95% confidence interval on the mean difference, Cohen's d, and a sample-ratio-mismatch (SRM) check.
+Everything below describes the generated sample only.
 
-Reported outputs describe **the generated sample only**.
+## Results (on the generated data)
 
----
+These recover the relationships I wrote into the generator. They aren't causal and they aren't real customer behaviour.
 
-## Results (outputs of the generated sample)
+**Churn classifier (synthetic test set)**
 
-These recover relationships written into the generator; they are not causal findings and not real customer behaviour.
+- ROC-AUC 0.821, accuracy 0.837.
+- Most important features (RF importance, not causation): `tenure_months` 0.522, `txn_count` 0.175.
 
-**Churn-label classifier (synthetic test set)**
-- ROC-AUC **0.821**, accuracy 0.837.
-- Features most associated with the label (RF importance, not causal): `tenure_months` 0.522, `txn_count` 0.175.
+**Churn by segment (generated)**
 
-**Churn label by segment (generated)**
 - By plan: Standard 19.8% vs Metal 10.7%.
-- By feature adoption: 1–2 features 18.1%, 3–4 features 14.5%, 5+ features 15.9% (non-monotonic; the 5+ bucket is small).
+- By feature adoption: 1–2 features 18.1%, 3–4 features 14.5%, 5+ features 15.9%. Not monotonic, and the 5+ bucket is small.
 
-**Simulated A/B test — primary metric: 30-day transaction count**
-- Control n = 964, Treatment n = 1,036; SRM check p = 0.107 (balanced).
-- Control mean 13.20 vs Treatment mean 15.06 (relative difference 14.2%).
-- Mean difference **1.87** transactions, 95% CI **1.54 to 2.20**; Cohen's d **0.490**; Welch t = 10.99; p < 0.0001.
-- The treatment effect was **injected by the generator**, so the low p-value shows the pipeline detects a **known** difference. It is **not** evidence that a real onboarding change works, and the primary metric is 30-day transaction activity, **not** retention.
+**Simulated A/B test — 30-day transaction count**
 
----
+- Control n = 964, Treatment n = 1,036; SRM check p = 0.107, so the split is balanced.
+- Control mean 13.20 vs Treatment mean 15.06 — a 14.2% relative difference.
+- Difference of 1.87 transactions, 95% CI 1.54 to 2.20; Cohen's d 0.490; Welch t = 10.99; p < 0.0001.
+- Since I injected that effect myself, the tiny p-value just means the pipeline correctly detects a difference I already know is there. It says nothing about whether a real onboarding change would work, and the metric here is transaction activity, not retention.
 
 ## Limitations
 
-- **Synthetic data.** Everything is generated; results are not real-world business, financial, or behavioural evidence.
-- **Label circularity / potential leakage.** The churn label is inactivity-based and some predictors come from the same transaction history, so this is closer to classifying an inactivity status than forecasting future churn.
-- **Feature importance is not causality.** Associations reflect the generator's encoded structure.
-- **The A/B "effect" is injected.** A significant p-value confirms the analysis detects the encoded difference; it does not justify any real rollout.
-- **Metric scope.** The experiment measures 30-day transaction count, not retention or revenue causally.
+- It's all synthetic, so none of it is real-world evidence.
+- The churn label is inactivity-based and some predictors come from the same transaction history, so this is closer to labelling an inactivity status than predicting future churn.
+- Feature importance reflects the structure I encoded, not cause and effect.
+- The A/B effect is injected — a significant result confirms detection, it doesn't justify a rollout.
+- The experiment measures 30-day transaction count, not retention or revenue.
 
----
-
-## Reproduce from a clean clone
+## Running it from a clean clone
 
 ```bash
 pip install -r requirements.txt
@@ -96,30 +85,24 @@ pip install -r requirements.txt
 python data/generate_data.py     # writes data/*.csv (git-ignored)
 python analysis.py               # SQL analysis, classifier, simulated A/B test, charts -> output/
 
-# Optional: run the SQL file standalone
+# optional: run the SQL file on its own
 python sql/load_to_sqlite.py     # builds data/fintech.db
-# then, if the sqlite3 CLI is installed:
+# then, if you have the sqlite3 CLI:
 # sqlite3 data/fintech.db < sql/analysis_queries.sql
 ```
 
-A typical run reports 8,000 users, 60,000 transactions, churn-label rate 17.0%, classifier ROC-AUC 0.821, and the simulated A/B results above.
+A normal run reports 8,000 users, 60,000 transactions, a 17.0% churn rate, classifier ROC-AUC 0.821, and the A/B numbers above.
 
----
-
-## Technologies
+## Tools
 
 Python, pandas, NumPy, scikit-learn, SciPy, matplotlib, seaborn, SQL, SQLite
 
----
+## Things I'd do next
 
-## Potential next steps
-
-- Redesign churn as a **prospective** task: a fixed observation window for features and a later outcome window for the label, with a temporal train/test split.
-- Add guardrail metrics, a power-analysis example, and randomisation-balance checks to the experiment section.
+- Reframe churn as a proper forward-looking problem: a fixed window for features, a later window for the outcome, and a time-based train/test split.
+- Add guardrail metrics, a power analysis, and randomisation-balance checks to the experiment.
 - Compare the Random Forest against a regularised logistic-regression baseline.
 
----
+## One-line summary
 
-## Résumé summary
-
-Independent product-analytics project on **fully synthetic** digital-banking data: SQL analysis, Random Forest classification of an inactivity-based churn label (ROC-AUC 0.82 on a synthetic test set), and a **simulated** A/B test of 30-day transaction activity with effect size and confidence intervals. Metrics demonstrate the analytical workflow, not real customer behaviour.
+Personal product-analytics project on fully synthetic banking data: SQL analysis, a Random Forest churn classifier (ROC-AUC 0.82 on a synthetic test set), and a simulated A/B test of 30-day transaction activity with effect size and confidence intervals. The numbers demonstrate the workflow, not real customer behaviour.
