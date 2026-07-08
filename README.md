@@ -1,78 +1,125 @@
-# Fintech Product Analytics: Churn & A/B Testing
+# Fintech Product Analytics: Churn-Label Classification & Simulated A/B Test
 
-**Mohamed Jeylani** | July 2026
+**Mohamed Jeylani**
 
-Analysis of user churn and an A/B test for a digital banking product — 8,000 users, 60,000 transactions. Built because I wanted to understand the kind of product analytics work that fintechs like Revolut do day-to-day.
+This is an independent product-analytics portfolio project built on **fully synthetic digital-banking data**. It demonstrates an end-to-end workflow — synthetic data generation, SQL analysis, classification of an inactivity-based churn label, and a simulated A/B test of 30-day transaction activity. The generator intentionally encodes several behavioural relationships and a treatment effect, so the resulting metrics **demonstrate analytical methods rather than real customer behaviour or causal product impact**. No proprietary employer data, and no real customer records, were used.
 
----
-
-## Why I Built This
-
-My first project was healthcare analytics (makes sense given my internships at UnitedHealth Group and Optum). But I'm targeting fintech roles too, and I didn't have anything that showed I could do product analytics. This project fills that gap.
-
-The two things I focused on:
-1. **Churn analysis** — what makes users leave a digital banking app?
-2. **A/B testing** — does a new onboarding flow actually improve retention?
+> My professional analytics experience motivated me to expand my portfolio into product analytics. This project is a separate, self-directed exercise and is not connected to any employer or their data.
 
 ---
 
-## What's In Here
+## Business question (illustrative)
 
-| File | What It Does |
-|---|---|
-| `analysis.py` | Full pipeline — data loading, SQL queries, churn modeling, A/B test evaluation, 4 charts |
-| `sql/analysis_queries.sql` | 6 business questions (MAU trends, churn by plan/country, cohort retention, etc.) |
-| `data/generate_data.py` | Synthetic data generator — modeled after real fintech user patterns |
-| `output/` | 4 charts (see below) |
+Framed as a product analyst might: which behavioural signals are associated with an inactivity-based churn label, and does a simulated onboarding variant change 30-day transaction activity? Both questions are answered **only within a generated dataset**, to exercise the methods.
 
 ---
 
-## Key Findings
+## Dataset (synthetic)
 
-### 1. Churn Drivers
-- **Tenure** is the #1 predictor — newer users churn way more. Makes sense: if someone's been around 18 months, they're probably staying.
-- **Transaction count** is #2 — active users stick around.
-- **Plan tier matters**: Metal plan users churn at 10.7% vs. 19.8% for Standard. Higher commitment = lower churn.
+All data are generated locally by `data/generate_data.py`. The generator creates an illustrative digital-banking scenario using **assumed** distributions for plans, product-feature adoption, transaction activity and account inactivity. These assumptions are **not** calibrated to or validated against proprietary data from any real financial institution (including any named fintech).
 
-### 2. Feature Adoption Reduces Churn
-Users who adopt 3+ product features churn less than those using only 1-2. This feels obvious in hindsight — the more value someone gets from the product, the less likely they are to leave.
+| Table | Rows | Notes |
+|---|---|---|
+| `users` | 8,000 | plan, country, signup date, adopted features, inactivity, churn label |
+| `transactions` | 60,000 | category and amount per transaction |
+| `ab_test` | 2,000 | users sampled into a simulated experiment (control/treatment) |
 
-### 3. A/B Test: New Onboarding Flow → **14.2% Transaction Lift**
-- Treatment group averaged 15.1 transactions in 30 days vs 13.2 for control
-- 15.1% higher spend ($451 vs $392)
-- p < 0.0001 — this is a real effect, not noise
-- **Recommendation**: Roll out the new flow to all users
+Verify counts by running the project (see below).
+
+**Churn label definition.** A user is labelled churned if they have been inactive for **more than 90 days** relative to a fixed cutoff (2026-01-01). Several model features are derived from the same transaction history that defines this label, so they share information with it (see Limitations).
 
 ---
 
-## How to Run
+## Repository structure
+
+```
+fintech-churn-analytics/
+├── README.md
+├── NOTES.md                  # short methodology / decision log
+├── requirements.txt
+├── analysis.py               # SQL analysis, churn-label classifier, simulated A/B test, charts
+├── data/
+│   └── generate_data.py      # synthetic data generator (git-ignored CSV output)
+└── sql/
+    ├── analysis_queries.sql  # business-style SQL queries
+    └── load_to_sqlite.py     # builds data/fintech.db so the SQL runs standalone
+```
+
+---
+
+## Methodology
+
+1. **Generate** synthetic users, transactions and a simulated A/B sample (fixed seed for reproducibility).
+2. **SQL analysis** via SQLite: churn label by plan/country, feature-adoption buckets, active-vs-churned behaviour, cohort retention.
+3. **Churn-label classification**: a Random Forest classifies the inactivity-based label. Split: `train_test_split`, `test_size=0.25`, `random_state=42` (no stratification). This is classification of a label defined at one observation point — **not** a prospective forecast.
+4. **Simulated A/B test**: the generator injects a higher expected 30-day transaction count into the treatment group. Analysis reports means, relative difference, a Welch t-test, a 95% confidence interval on the mean difference, Cohen's d, and a sample-ratio-mismatch (SRM) check.
+
+Reported outputs describe **the generated sample only**.
+
+---
+
+## Results (outputs of the generated sample)
+
+These recover relationships written into the generator; they are not causal findings and not real customer behaviour.
+
+**Churn-label classifier (synthetic test set)**
+- ROC-AUC **0.821**, accuracy 0.837.
+- Features most associated with the label (RF importance, not causal): `tenure_months` 0.522, `txn_count` 0.175.
+
+**Churn label by segment (generated)**
+- By plan: Standard 19.8% vs Metal 10.7%.
+- By feature adoption: 1–2 features 18.1%, 3–4 features 14.5%, 5+ features 15.9% (non-monotonic; the 5+ bucket is small).
+
+**Simulated A/B test — primary metric: 30-day transaction count**
+- Control n = 964, Treatment n = 1,036; SRM check p = 0.107 (balanced).
+- Control mean 13.20 vs Treatment mean 15.06 (relative difference 14.2%).
+- Mean difference **1.87** transactions, 95% CI **1.54 to 2.20**; Cohen's d **0.490**; Welch t = 10.99; p < 0.0001.
+- The treatment effect was **injected by the generator**, so the low p-value shows the pipeline detects a **known** difference. It is **not** evidence that a real onboarding change works, and the primary metric is 30-day transaction activity, **not** retention.
+
+---
+
+## Limitations
+
+- **Synthetic data.** Everything is generated; results are not real-world business, financial, or behavioural evidence.
+- **Label circularity / potential leakage.** The churn label is inactivity-based and some predictors come from the same transaction history, so this is closer to classifying an inactivity status than forecasting future churn.
+- **Feature importance is not causality.** Associations reflect the generator's encoded structure.
+- **The A/B "effect" is injected.** A significant p-value confirms the analysis detects the encoded difference; it does not justify any real rollout.
+- **Metric scope.** The experiment measures 30-day transaction count, not retention or revenue causally.
+
+---
+
+## Reproduce from a clean clone
 
 ```bash
 pip install -r requirements.txt
-python3 data/generate_data.py   # generate the synthetic data
-python3 analysis.py             # run the full analysis
+
+python data/generate_data.py     # writes data/*.csv (git-ignored)
+python analysis.py               # SQL analysis, classifier, simulated A/B test, charts -> output/
+
+# Optional: run the SQL file standalone
+python sql/load_to_sqlite.py     # builds data/fintech.db
+# then, if the sqlite3 CLI is installed:
+# sqlite3 data/fintech.db < sql/analysis_queries.sql
 ```
 
-Output goes to `output/` — 4 PNG charts. SQL queries in `sql/analysis_queries.sql` can be run against any SQLite setup.
+A typical run reports 8,000 users, 60,000 transactions, churn-label rate 17.0%, classifier ROC-AUC 0.821, and the simulated A/B results above.
 
 ---
 
-## Things I'd Improve With More Time
+## Technologies
 
-- [ ] Add an actual dashboard (thinking Streamlit or a Power BI embed)
-- [ ] Implement a proper ETL pipeline instead of one-shot data loading
-- [ ] Test more models (XGBoost, logistic regression) not just Random Forest
-- [ ] Add a time-to-churn survival analysis (Kaplan-Meier curves)
-- [ ] Simulate a multi-arm bandit instead of a simple A/B test
+Python, pandas, NumPy, scikit-learn, SciPy, matplotlib, seaborn, SQL, SQLite
 
 ---
 
-## Tech
+## Potential next steps
 
-Python, pandas, NumPy, scikit-learn, matplotlib, seaborn, scipy, SQL, SQLite
+- Redesign churn as a **prospective** task: a fixed observation window for features and a later outcome window for the label, with a temporal train/test split.
+- Add guardrail metrics, a power-analysis example, and randomisation-balance checks to the experiment section.
+- Compare the Random Forest against a regularised logistic-regression baseline.
 
 ---
 
-## Context
+## Résumé summary
 
-I built this for my job search — data analyst and product analytics roles, mostly at fintechs in London and the Netherlands. I've also got a healthcare analytics project (see my other repo) from my UnitedHealth Group / Optum experience. Between the two, I wanted to show I can work in different industries without needing a ton of ramp-up time.
+Independent product-analytics project on **fully synthetic** digital-banking data: SQL analysis, Random Forest classification of an inactivity-based churn label (ROC-AUC 0.82 on a synthetic test set), and a **simulated** A/B test of 30-day transaction activity with effect size and confidence intervals. Metrics demonstrate the analytical workflow, not real customer behaviour.

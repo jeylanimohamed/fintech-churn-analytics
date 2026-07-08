@@ -3,9 +3,11 @@ Fintech Product Analytics — Churn & A/B Test Analysis
 ======================================================
 Project by Mohamed Jeylani | July 2026
 
-Goal: Understand why users churn from a digital banking product and
-whether a new onboarding flow improves retention. Uses synthetic data
-modeled after patterns I've seen in fintech analytics.
+Goal: Demonstrate a product-analytics workflow on fully synthetic data:
+classify an inactivity-based churn label and analyse a simulated A/B test of
+30-day transaction activity. The generator intentionally encodes several
+relationships and a treatment effect, so results demonstrate the analysis
+methods rather than real customer behaviour or causal product impact.
 
 Structure:
   1. Load & explore the data
@@ -162,8 +164,13 @@ print(f"Churn when 3-4 features: {feat_churn.iloc[1]:.1f}%")
 print(f"Churn when 5+ features:  {feat_churn.iloc[2]:.1f}%")
 print()
 
-# Churn prediction model
-print("Building churn prediction model...")
+# Churn-label classifier
+# NOTE: the churn label is defined by inactivity relative to a cutoff date
+# (>90 days since last transaction). Several predictors are derived from the
+# same transaction history that defines the label, so they share information
+# with it. This is therefore a classification of an inactivity-based label on
+# a single observation point, not a prospective forecast of future churn.
+print("Fitting churn-label classifier (synthetic data)...")
 features = ['age', 'tenure_months', 'txn_count', 'total_spend', 
             'avg_txn_value', 'categories_used', 'feature_count',
             'plan_Plus', 'plan_Premium', 'plan_Metal', 'plan_Standard']
@@ -188,7 +195,7 @@ imp = pd.DataFrame({
     'importance': rf.feature_importances_
 }).sort_values('importance')
 
-print("\nWhat drives churn (feature importance):")
+print("\nFeatures most associated with the churn label (RF importance; not causal):")
 for _, row in imp.iterrows():
     bar = '█' * int(row['importance'] * 100)
     print(f"  {row['feature']:20s} {bar} {row['importance']:.3f}")
@@ -207,26 +214,45 @@ treatment = ab_test[ab_test['variant'] == 'treatment']
 print(f"\nControl group:   {len(control)} users")
 print(f"Treatment group: {len(treatment)} users")
 
-# Transaction count (our primary metric)
+# Primary metric: 30-day transaction count (this is NOT a retention metric)
 ctrl_txn = control['txn_count_30d']
 trt_txn = treatment['txn_count_30d']
 
-print(f"\nControl avg transactions (30d):   {ctrl_txn.mean():.1f}")
-print(f"Treatment avg transactions (30d):  {trt_txn.mean():.1f}")
-print(f"Lift:                             {((trt_txn.mean()/ctrl_txn.mean())-1)*100:.1f}%")
+# Sample-ratio-mismatch (SRM) check: is the split close to the intended 50/50?
+n_c, n_t = len(control), len(treatment)
+_, srm_p = stats.chisquare([n_c, n_t], f_exp=[(n_c + n_t) / 2] * 2)
 
-# T-test
-t_stat, p_value = stats.ttest_ind(trt_txn, ctrl_txn)
-print(f"\nT-statistic: {t_stat:.3f}")
-print(f"P-value:     {p_value:.4f}")
-print(f"Significant at 95% confidence: {'YES ✓' if p_value < 0.05 else 'no'}")
+print(f"\nControl n:   {n_c}")
+print(f"Treatment n: {n_t}")
+print(f"SRM check (chi-square p): {srm_p:.3f}  ({'balanced' if srm_p > 0.01 else 'IMBALANCED'})")
+print(f"\nControl avg transactions (30d):   {ctrl_txn.mean():.2f}")
+print(f"Treatment avg transactions (30d):  {trt_txn.mean():.2f}")
+print(f"Relative difference:              {((trt_txn.mean()/ctrl_txn.mean())-1)*100:.1f}%")
+
+# Welch's t-test (does not assume equal variances)
+t_stat, p_value = stats.ttest_ind(trt_txn, ctrl_txn, equal_var=False)
+
+# Effect size (Cohen's d, pooled SD) and 95% CI on the mean difference
+diff = trt_txn.mean() - ctrl_txn.mean()
+sp = np.sqrt(((n_t - 1) * trt_txn.var(ddof=1) + (n_c - 1) * ctrl_txn.var(ddof=1)) / (n_t + n_c - 2))
+cohens_d = diff / sp
+se_diff = np.sqrt(trt_txn.var(ddof=1) / n_t + ctrl_txn.var(ddof=1) / n_c)
+ci_low, ci_high = diff - 1.96 * se_diff, diff + 1.96 * se_diff
+
+print(f"\nMean difference: {diff:.2f} transactions (95% CI {ci_low:.2f} to {ci_high:.2f})")
+print(f"Cohen's d:       {cohens_d:.3f}")
+print(f"T-statistic:     {t_stat:.3f}")
+print(f"P-value:         {p_value:.4f}")
+print("Note: the treatment effect was intentionally injected by the data")
+print("generator, so a low p-value shows the pipeline detects that known")
+print("difference. It is not evidence about a real product intervention.")
 
 # Spend comparison
 ctrl_spend = control['total_spend_30d']
 trt_spend = treatment['total_spend_30d']
 print(f"\nControl avg spend (30d):   ${ctrl_spend.mean():.2f}")
 print(f"Treatment avg spend (30d):  ${trt_spend.mean():.2f}")
-print(f"Revenue lift:               {((trt_spend.mean()/ctrl_spend.mean())-1)*100:.1f}%")
+print(f"Relative spend difference:  {((trt_spend.mean()/ctrl_spend.mean())-1)*100:.1f}%")
 
 # ══════════════════════════════════════════
 # 5. VISUALIZATIONS
@@ -267,7 +293,7 @@ print("  ✓ output/churn_drivers.png")
 # Fig 2: Feature importance
 fig, ax = plt.subplots(figsize=(9, 5))
 bars = ax.barh(imp['feature'], imp['importance'], color=sns.color_palette('mako', len(imp)))
-ax.set_title('What Predicts Churn? (Random Forest Feature Importance)', fontweight='bold')
+ax.set_title('Features Associated with Churn Label (RF importance, synthetic data)', fontweight='bold')
 ax.set_xlabel('Importance Score')
 for bar, val in zip(bars, imp['importance']):
     ax.text(bar.get_width() + 0.003, bar.get_y() + bar.get_height()/2, f'{val:.3f}',
@@ -295,7 +321,7 @@ for i, (mean, std, n) in enumerate([(ctrl_spend.mean(), ctrl_spend.std(), len(co
     axes[1].errorbar(i, mean, yerr=std/np.sqrt(n), capsize=8, color='black', linewidth=1.5)
     axes[1].text(i, mean + 5, f'${mean:.0f}', ha='center', fontweight='bold', fontsize=11)
 
-fig.suptitle(f'A/B Test Results: New Onboarding Flow (p={p_value:.4f})', fontsize=13, fontweight='bold')
+fig.suptitle(f'Simulated A/B Test — 30-day Transaction Activity (p={p_value:.4f})', fontsize=13, fontweight='bold')
 plt.tight_layout()
 plt.savefig('output/ab_test_results.png', dpi=140, bbox_inches='tight')
 plt.close()
@@ -336,26 +362,27 @@ print("=" * 55)
 top_driver = imp.iloc[-1]
 second_driver = imp.iloc[-2]
 print(f"""
-1. CHURN DRIVERS
-   Top predictor: {top_driver['feature']} ({top_driver['importance']:.3f} importance)
-   Second: {second_driver['feature']} ({second_driver['importance']:.3f} importance)
+All values below are outputs of the synthetic sample, under the assumptions
+encoded in the generator. They demonstrate the analysis workflow and do not
+describe real customer behaviour or causal effects.
 
-2. PLAN IMPACT
-   Standard plan churn: {plan_data['Standard']:.1f}% vs Metal: {plan_data['Metal']:.1f}%
-   Higher-tier plans show {'lower' if plan_data['Metal'] < plan_data['Standard'] else 'higher'} churn
+1. CHURN-LABEL ASSOCIATIONS (feature importance, not causal)
+   Most associated: {top_driver['feature']} ({top_driver['importance']:.3f})
+   Second: {second_driver['feature']} ({second_driver['importance']:.3f})
 
-3. FEATURE ADOPTION
-   Users with 5+ features churn at {feat_data['5+ features']:.1f}% vs {feat_data['1-2 features']:.1f}% for 1-2 features
-   Each additional feature adopted reduces churn risk
+2. CHURN LABEL BY PLAN (generated sample)
+   Standard: {plan_data['Standard']:.1f}%   vs   Metal: {plan_data['Metal']:.1f}%
 
-4. A/B TEST: NEW ONBOARDING
-   Transaction lift: {((trt_txn.mean()/ctrl_txn.mean())-1)*100:.1f}%
-   Spend lift: {((trt_spend.mean()/ctrl_spend.mean())-1)*100:.1f}%
-   Statistically significant: {'YES' if p_value < 0.05 else 'NO'} (p={p_value:.4f})
+3. CHURN LABEL BY FEATURE ADOPTION (generated sample)
+   5+ features: {feat_data['5+ features']:.1f}%    1-2 features: {feat_data['1-2 features']:.1f}%
 
-5. RECOMMENDATIONS
-   → Roll out new onboarding flow to all users ({((trt_txn.mean()/ctrl_txn.mean())-1)*100:.1f}% transaction lift)
-   → Target Standard plan users with feature adoption campaigns
-   → Monitor users who drop below 3 active features — they're at risk
-   → Crypto and Stocks categories correlate with lower churn — promote these
+4. SIMULATED A/B TEST (primary metric: 30-day transaction count)
+   Mean difference {diff:.2f} (95% CI {ci_low:.2f} to {ci_high:.2f}); Cohen's d {cohens_d:.3f}; p={p_value:.4f}
+   The treatment effect was injected by the generator, so this detects a
+   known difference rather than proving a real intervention works.
+
+5. WHAT REAL NEXT STEPS WOULD LOOK LIKE (not performed here)
+   Validate randomisation and SRM, review guardrail metrics, estimate
+   confidence intervals and practical significance, and monitor longer-term
+   retention before considering any rollout.
 """)

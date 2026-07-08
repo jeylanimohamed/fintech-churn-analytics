@@ -1,7 +1,9 @@
 """
 Generate synthetic fintech user data for churn/product analytics project.
-Models patterns seen in digital banking apps — signups, transactions,
-product feature adoption, and churn.
+Creates an illustrative digital-banking scenario using assumed distributions
+for signups, transactions, product feature adoption, and account inactivity.
+These assumptions are not calibrated to or validated against proprietary data
+from any real financial institution.
 
 Run: python3 data/generate_data.py
 Output: data/users.csv, data/transactions.csv, data/ab_test.csv
@@ -20,7 +22,8 @@ N_TRANSACTIONS = 60000
 def generate_users(n):
     ages = np.random.normal(34, 11, n).clip(18, 75).astype(int)
     
-    # Countries roughly proportional to Revolut's markets
+    # Countries drawn from an assumed European distribution (illustrative,
+    # not calibrated to any real company's customer base)
     countries = np.random.choice(
         ['UK', 'Spain', 'Poland', 'Portugal', 'France', 'Germany', 'Other'],
         n, p=[0.28, 0.16, 0.15, 0.10, 0.12, 0.10, 0.09]
